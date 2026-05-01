@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1c1f28"/>
+      <stop offset="100%" stop-color="#0e0f12"/>
+    </linearGradient>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6b8afd"/>
+      <stop offset="100%" stop-color="#9b6bfd"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdb96b"/>
+      <stop offset="100%" stop-color="#fd6b8a"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9b6bfd"/>
+      <stop offset="100%" stop-color="#cf6bfd"/>
+    </linearGradient>
+    <linearGradient id="g4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5dd4fd"/>
+      <stop offset="100%" stop-color="#6b8afd"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+
+  <g transform="translate(256 256)">
+    <rect x="-180" y="-180" width="170" height="170" rx="20" fill="url(#g1)"/>
+    <rect x="10" y="-180" width="170" height="170" rx="20" fill="url(#g2)"/>
+    <rect x="-180" y="10" width="170" height="170" rx="20" fill="url(#g3)"/>
+    <rect x="10" y="10" width="170" height="170" rx="20" fill="url(#g4)"/>
+  </g>
+</svg>

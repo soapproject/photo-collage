@@ -7,6 +7,7 @@ import { TextLayer } from './components/TextLayer';
 import { TextPanel } from './components/TextPanel';
 import { FilterPanel } from './components/FilterPanel';
 import { CellStylePanel } from './components/CellStylePanel';
+import { SizeInput } from './components/SizeInput';
 import { LAYOUTS } from './layouts';
 import { ASPECT_RATIOS, DEFAULT_FILTER, FONT_FAMILIES } from './types';
 import { applyResize, type ResizeDir } from './resize';
@@ -603,35 +604,21 @@ export default function App() {
             </div>
             <div className="form-row">
               <label>寬</label>
-              <input
-                type="number"
-                className="num-input"
+              <SizeInput
+                value={config.width}
                 min={64}
                 max={8000}
-                value={config.width}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    width: Math.max(64, Math.min(8000, parseInt(e.target.value) || c.width)),
-                  }))
-                }
+                onCommit={(v) => setConfig((c) => ({ ...c, width: v }))}
               />
               <span className="form-val">px</span>
             </div>
             <div className="form-row">
               <label>高</label>
-              <input
-                type="number"
-                className="num-input"
+              <SizeInput
+                value={config.height}
                 min={64}
                 max={8000}
-                value={config.height}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    height: Math.max(64, Math.min(8000, parseInt(e.target.value) || c.height)),
-                  }))
-                }
+                onCommit={(v) => setConfig((c) => ({ ...c, height: v }))}
               />
               <span className="form-val">px</span>
             </div>

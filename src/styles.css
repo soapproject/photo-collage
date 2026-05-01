@@ -30,6 +30,14 @@
   box-shadow: 0 0 12px rgba(107, 138, 253, 0.6);
 }
 
+.brand-version {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: 400;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
 .topbar-spacer {
   flex: 1;
 }

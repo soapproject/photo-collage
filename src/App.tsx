@@ -528,6 +528,7 @@ export default function App() {
         <div className="brand">
           <span className="brand-dot" />
           拼貼相片
+          <span className="brand-version">v{__APP_VERSION__}</span>
         </div>
         <div className="topbar-spacer" />
         <button

@@ -4,6 +4,8 @@
 
 把多張照片拖進來,挑版型、調濾鏡、加文字,匯出指定解析度的 PNG。完全離線,所有運算在本機。
 
+<img width="3839" height="2083" alt="image" src="https://github.com/user-attachments/assets/0a42f6b1-a0c6-49a0-af60-898f9c54449f" />
+
 ---
 
 ## ✨ 功能

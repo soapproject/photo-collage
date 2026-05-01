@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "拼貼相片",
+  "productName": "PhotoCollage",
   "version": "0.1.0",
   "identifier": "com.weiss.photo-collage",
   "build": {

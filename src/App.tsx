@@ -302,6 +302,66 @@ export default function App() {
     setSelected(null);
   };
 
+  const distributeRow = (idx: number) => {
+    const me = layout.cells[idx];
+    const rowIdxs = layout.cells
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => Math.abs(c.y - me.y) < 0.5 && Math.abs(c.h - me.h) < 0.5)
+      .map(({ i }) => i)
+      .sort((a, b) => layout.cells[a].x - layout.cells[b].x);
+    if (rowIdxs.length < 2) return;
+    const minX = Math.min(...rowIdxs.map((i) => layout.cells[i].x));
+    const maxX = Math.max(...rowIdxs.map((i) => layout.cells[i].x + layout.cells[i].w));
+    const eachW = (maxX - minX) / rowIdxs.length;
+    setLayout((l) => {
+      const cells = l.cells.slice();
+      rowIdxs.forEach((i, k) => {
+        cells[i] = { ...cells[i], x: minX + k * eachW, w: eachW };
+      });
+      return { ...l, cells };
+    });
+  };
+
+  const distributeCol = (idx: number) => {
+    const me = layout.cells[idx];
+    const colIdxs = layout.cells
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => Math.abs(c.x - me.x) < 0.5 && Math.abs(c.w - me.w) < 0.5)
+      .map(({ i }) => i)
+      .sort((a, b) => layout.cells[a].y - layout.cells[b].y);
+    if (colIdxs.length < 2) return;
+    const minY = Math.min(...colIdxs.map((i) => layout.cells[i].y));
+    const maxY = Math.max(...colIdxs.map((i) => layout.cells[i].y + layout.cells[i].h));
+    const eachH = (maxY - minY) / colIdxs.length;
+    setLayout((l) => {
+      const cells = l.cells.slice();
+      colIdxs.forEach((i, k) => {
+        cells[i] = { ...cells[i], y: minY + k * eachH, h: eachH };
+      });
+      return { ...l, cells };
+    });
+  };
+
+  const splitCell = (idx: number, dir: 'h' | 'v') => {
+    setLayout((l) => {
+      const cells = l.cells.slice();
+      const c = cells[idx];
+      const a = dir === 'h' ? { ...c, w: c.w / 2 } : { ...c, h: c.h / 2 };
+      const b =
+        dir === 'h'
+          ? { ...c, x: c.x + c.w / 2, w: c.w / 2 }
+          : { ...c, y: c.y + c.h / 2, h: c.h / 2 };
+      cells[idx] = a;
+      cells.splice(idx + 1, 0, b);
+      return { ...l, cells };
+    });
+    setCellStates((cs) => {
+      const next = cs.slice();
+      next.splice(idx + 1, 0, { ...DEFAULT_CELL });
+      return next;
+    });
+  };
+
   const clearCell = (idx: number) => {
     setCellStates((cs) => cs.map((c, i) => (i === idx ? { ...DEFAULT_CELL } : c)));
   };
@@ -510,6 +570,42 @@ export default function App() {
                 disabled={selected == null}
               >
                 － 刪選中
+              </button>
+            </div>
+            <div className="text-actions">
+              <button
+                className="btn"
+                onClick={() => selected != null && splitCell(selected, 'h')}
+                disabled={selected == null}
+                title="把選中格子切左右兩半"
+              >
+                ↔ 左右切
+              </button>
+              <button
+                className="btn"
+                onClick={() => selected != null && splitCell(selected, 'v')}
+                disabled={selected == null}
+                title="把選中格子切上下兩半"
+              >
+                ↕ 上下切
+              </button>
+            </div>
+            <div className="text-actions">
+              <button
+                className="btn"
+                onClick={() => selected != null && distributeRow(selected)}
+                disabled={selected == null}
+                title="把同一橫排的格子設成等寬"
+              >
+                ⇿ 平均橫排
+              </button>
+              <button
+                className="btn"
+                onClick={() => selected != null && distributeCol(selected)}
+                disabled={selected == null}
+                title="把同一直列的格子設成等高"
+              >
+                ⇕ 平均直列
               </button>
             </div>
           </section>

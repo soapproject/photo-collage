@@ -25,6 +25,7 @@ export const LAYOUTS: Layout[] = [
   { id: 'grid-3x2', name: '3 × 2 格', cells: grid(3, 2) },
   { id: 'grid-2x3', name: '2 × 3 格', cells: grid(2, 3) },
   { id: 'grid-3x3', name: '3 × 3 格', cells: grid(3, 3) },
+  { id: 'grid-4x4', name: '4 × 4 格', cells: grid(4, 4) },
 
   {
     id: 'big-left-2',

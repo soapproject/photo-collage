@@ -94,6 +94,7 @@ export default function App() {
     y: null,
   });
   const stageRef = useRef<HTMLDivElement>(null);
+  const textClipboardRef = useRef<TextItem | null>(null);
 
   const historyRef = useRef<{
     past: EditableState[];
@@ -179,6 +180,19 @@ export default function App() {
       const tag = (document.activeElement?.tagName ?? '').toLowerCase();
       if (tag === 'input' || tag === 'textarea') return;
       const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === 'c' || e.key === 'C') && selectedTextId) {
+        const src = texts.find((t) => t.id === selectedTextId);
+        if (src) {
+          textClipboardRef.current = src;
+          e.preventDefault();
+        }
+        return;
+      }
+      if (mod && (e.key === 'v' || e.key === 'V') && textClipboardRef.current) {
+        e.preventDefault();
+        pasteTextFromClipboard();
+        return;
+      }
       if (mod && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         undo();
@@ -189,7 +203,8 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo, selectedTextId, texts]);
 
   const addPhotosAndFill = useCallback(async (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith('image/'));
@@ -448,6 +463,23 @@ export default function App() {
   const removeText = (id: string) => {
     setTexts((ts) => ts.filter((t) => t.id !== id));
     if (selectedTextId === id) setSelectedTextId(null);
+  };
+
+  const pasteTextFromClipboard = () => {
+    const src = textClipboardRef.current;
+    if (!src) return;
+    const id = newId();
+    const copy: TextItem = {
+      ...src,
+      id,
+      x: Math.min(95, src.x + 3),
+      y: Math.min(95, src.y + 3),
+    };
+    setTexts((ts) => [...ts, copy]);
+    setSelectedTextId(id);
+    setSelected(null);
+    // bump offset so consecutive pastes cascade
+    textClipboardRef.current = copy;
   };
 
   const bringTextToFront = (id: string) => {

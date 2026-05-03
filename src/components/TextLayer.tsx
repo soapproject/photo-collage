@@ -82,12 +82,40 @@ export function TextLayer({
     target.addEventListener('pointercancel', onUp);
   };
 
+  const startRotate = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect();
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - cx;
+      const dy = ev.clientY - cy;
+      let angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+      if (ev.shiftKey) angle = Math.round(angle / 15) * 15;
+      if (angle > 180) angle -= 360;
+      if (angle < -180) angle += 360;
+      onChange({ rotation: Math.round(angle * 10) / 10 });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    document.body.style.cursor = 'grabbing';
+  };
+
   const baseStyle: React.CSSProperties = {
     position: 'absolute',
     left: `${item.x}%`,
     top: `${item.y}%`,
     transform: `rotate(${item.rotation}deg)`,
-    transformOrigin: 'top left',
+    transformOrigin: 'center center',
     cursor: editing ? 'text' : 'move',
     opacity: item.opacity,
     color: item.color,
@@ -158,6 +186,16 @@ export function TextLayer({
         />
       ) : (
         item.text || ' '
+      )}
+      {selected && !editing && (
+        <div className="rotate-anchor">
+          <div className="rotate-line" />
+          <div
+            className="rotate-handle"
+            onPointerDown={startRotate}
+            title="拖曳旋轉（Shift 鎖 15°）"
+          />
+        </div>
       )}
     </div>
   );

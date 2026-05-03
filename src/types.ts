@@ -141,3 +141,45 @@ export const FONT_FAMILIES: { id: string; label: string; stack: string }[] = [
 ];
 
 export const FONT_WEIGHTS = [300, 400, 500, 600, 700, 800, 900];
+
+export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'arrow';
+
+export type ShapeItem = {
+  id: string;
+  kind: ShapeKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+  opacity: number;
+  fill: string | null;
+  stroke: string | null;
+  strokeWidth: number;
+  radius: number;
+};
+
+export function defaultShapeFor(kind: ShapeKind): Omit<ShapeItem, 'id'> {
+  switch (kind) {
+    case 'rect':
+      return {
+        kind, x: 30, y: 35, w: 30, h: 20, rotation: 0, opacity: 1,
+        fill: '#6b8afd', stroke: '#0e0f12', strokeWidth: 0, radius: 8,
+      };
+    case 'ellipse':
+      return {
+        kind, x: 30, y: 30, w: 30, h: 30, rotation: 0, opacity: 1,
+        fill: '#9b6bfd', stroke: '#0e0f12', strokeWidth: 0, radius: 0,
+      };
+    case 'line':
+      return {
+        kind, x: 25, y: 48, w: 40, h: 6, rotation: 0, opacity: 1,
+        fill: null, stroke: '#0e0f12', strokeWidth: 6, radius: 0,
+      };
+    case 'arrow':
+      return {
+        kind, x: 25, y: 47, w: 40, h: 8, rotation: 0, opacity: 1,
+        fill: null, stroke: '#0e0f12', strokeWidth: 8, radius: 0,
+      };
+  }
+}

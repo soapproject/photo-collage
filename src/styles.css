@@ -543,6 +543,72 @@
   padding: 1px 8px;
 }
 
+/* ---------- rotation handle (shared by shapes + texts) ---------- */
+.rotate-anchor {
+  position: absolute;
+  left: 50%;
+  top: -54px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 9;
+}
+.rotate-line {
+  width: 1px;
+  height: 30px;
+  background: var(--accent);
+}
+.rotate-handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  cursor: grab;
+  pointer-events: auto;
+  box-shadow: 0 0 0 1px rgba(107, 138, 253, 0.4);
+}
+.rotate-handle:active {
+  cursor: grabbing;
+}
+
+/* ---------- shape layers ---------- */
+.shape-layer {
+  z-index: 5;
+}
+.shape-handle {
+  position: absolute;
+  background: var(--accent);
+  border-radius: 50%;
+  z-index: 8;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.shape-handle-l {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+.shape-handle-r {
+  right: -10px;
+  top: 50%;
+  cursor: ew-resize;
+}
+.shape-handle-t {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.shape-handle-b {
+  left: 50%;
+  bottom: -10px;
+  cursor: ns-resize;
+}
+
 /* ---------- snap guides ---------- */
 .snap-guide {
   position: absolute;

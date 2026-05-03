@@ -8,10 +8,21 @@ import { TextPanel } from './components/TextPanel';
 import { FilterPanel } from './components/FilterPanel';
 import { CellStylePanel } from './components/CellStylePanel';
 import { SizeInput } from './components/SizeInput';
+import { ShapeLayer } from './components/ShapeLayer';
+import { ShapePanel } from './components/ShapePanel';
 import { LAYOUTS } from './layouts';
-import { ASPECT_RATIOS, DEFAULT_FILTER, FONT_FAMILIES } from './types';
+import { ASPECT_RATIOS, DEFAULT_FILTER, FONT_FAMILIES, defaultShapeFor } from './types';
 import { applyResize, type ResizeDir } from './resize';
-import type { CanvasConfig, CellFilter, CellState, Layout, Photo, TextItem } from './types';
+import type {
+  CanvasConfig,
+  CellFilter,
+  CellState,
+  Layout,
+  Photo,
+  ShapeItem,
+  ShapeKind,
+  TextItem,
+} from './types';
 import './styles.css';
 
 const cloneLayout = (l: Layout): Layout => ({
@@ -37,6 +48,7 @@ type EditableState = {
   layout: Layout;
   cellStates: CellState[];
   texts: TextItem[];
+  shapes: ShapeItem[];
   config: CanvasConfig;
 };
 
@@ -48,6 +60,7 @@ const statesDiffer = (a: EditableState, b: EditableState) =>
   a.layout !== b.layout ||
   a.cellStates !== b.cellStates ||
   a.texts !== b.texts ||
+  a.shapes !== b.shapes ||
   a.config !== b.config;
 
 const newId = () =>
@@ -89,12 +102,29 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [texts, setTexts] = useState<TextItem[]>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [shapes, setShapes] = useState<ShapeItem[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({
     x: null,
     y: null,
   });
   const stageRef = useRef<HTMLDivElement>(null);
-  const textClipboardRef = useRef<TextItem | null>(null);
+  const clipboardRef = useRef<
+    | { kind: 'text'; item: TextItem }
+    | { kind: 'shape'; item: ShapeItem }
+    | null
+  >(null);
+  const lastShapeStyleRef = useRef<{
+    fill: string | null;
+    stroke: string | null;
+    strokeWidth: number;
+    radius: number;
+  }>({
+    fill: '#6b8afd',
+    stroke: '#0e0f12',
+    strokeWidth: 6,
+    radius: 8,
+  });
 
   const historyRef = useRef<{
     past: EditableState[];
@@ -103,13 +133,13 @@ export default function App() {
   }>({
     past: [],
     future: [],
-    current: { photos: [], layout, cellStates, texts: [], config },
+    current: { photos: [], layout, cellStates, texts: [], shapes: [], config },
   });
   const [, bumpHistory] = useReducer((x: number) => x + 1, 0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const current: EditableState = { photos, layout, cellStates, texts, config };
+    const current: EditableState = { photos, layout, cellStates, texts, shapes, config };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       const prev = historyRef.current.current;
@@ -121,7 +151,7 @@ export default function App() {
         bumpHistory();
       }
     }, HISTORY_DEBOUNCE_MS);
-  }, [photos, layout, cellStates, texts, config]);
+  }, [photos, layout, cellStates, texts, shapes, config]);
 
   const applyState = (s: EditableState) => {
     historyRef.current.current = s;
@@ -129,9 +159,11 @@ export default function App() {
     setLayout(s.layout);
     setCellStates(s.cellStates);
     setTexts(s.texts);
+    setShapes(s.shapes);
     setConfig(s.config);
     setSelected(null);
     setSelectedTextId(null);
+    setSelectedShapeId(null);
   };
 
   const flushPendingHistory = () => {
@@ -139,7 +171,7 @@ export default function App() {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const current: EditableState = { photos, layout, cellStates, texts, config };
+    const current: EditableState = { photos, layout, cellStates, texts, shapes, config };
     const prev = historyRef.current.current;
     if (statesDiffer(prev, current)) {
       historyRef.current.past.push(prev);
@@ -157,7 +189,7 @@ export default function App() {
     applyState(prev);
     bumpHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos, layout, cellStates, texts, config]);
+  }, [photos, layout, cellStates, texts, shapes, config]);
 
   const redo = useCallback(() => {
     if (debounceRef.current) {
@@ -180,17 +212,25 @@ export default function App() {
       const tag = (document.activeElement?.tagName ?? '').toLowerCase();
       if (tag === 'input' || tag === 'textarea') return;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && (e.key === 'c' || e.key === 'C') && selectedTextId) {
-        const src = texts.find((t) => t.id === selectedTextId);
-        if (src) {
-          textClipboardRef.current = src;
-          e.preventDefault();
+      if (mod && (e.key === 'c' || e.key === 'C')) {
+        if (selectedTextId) {
+          const src = texts.find((t) => t.id === selectedTextId);
+          if (src) {
+            clipboardRef.current = { kind: 'text', item: src };
+            e.preventDefault();
+          }
+        } else if (selectedShapeId) {
+          const src = shapes.find((s) => s.id === selectedShapeId);
+          if (src) {
+            clipboardRef.current = { kind: 'shape', item: src };
+            e.preventDefault();
+          }
         }
         return;
       }
-      if (mod && (e.key === 'v' || e.key === 'V') && textClipboardRef.current) {
+      if (mod && (e.key === 'v' || e.key === 'V') && clipboardRef.current) {
         e.preventDefault();
-        pasteTextFromClipboard();
+        pasteFromClipboard();
         return;
       }
       if (mod && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
@@ -204,7 +244,7 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, redo, selectedTextId, texts]);
+  }, [undo, redo, selectedTextId, texts, selectedShapeId, shapes]);
 
   const addPhotosAndFill = useCallback(async (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith('image/'));
@@ -465,21 +505,89 @@ export default function App() {
     if (selectedTextId === id) setSelectedTextId(null);
   };
 
-  const pasteTextFromClipboard = () => {
-    const src = textClipboardRef.current;
+  const pasteFromClipboard = () => {
+    const src = clipboardRef.current;
     if (!src) return;
     const id = newId();
-    const copy: TextItem = {
-      ...src,
+    if (src.kind === 'text') {
+      const copy: TextItem = {
+        ...src.item,
+        id,
+        x: Math.min(95, src.item.x + 3),
+        y: Math.min(95, src.item.y + 3),
+      };
+      setTexts((ts) => [...ts, copy]);
+      setSelectedTextId(id);
+      setSelected(null);
+      setSelectedShapeId(null);
+      clipboardRef.current = { kind: 'text', item: copy };
+    } else {
+      const copy: ShapeItem = {
+        ...src.item,
+        id,
+        x: Math.min(100 - src.item.w, src.item.x + 3),
+        y: Math.min(100 - src.item.h, src.item.y + 3),
+      };
+      setShapes((ss) => [...ss, copy]);
+      setSelectedShapeId(id);
+      setSelected(null);
+      setSelectedTextId(null);
+      clipboardRef.current = { kind: 'shape', item: copy };
+    }
+  };
+
+  const addShape = (kind: ShapeKind) => {
+    const id = newId();
+    const base = defaultShapeFor(kind);
+    const last = lastShapeStyleRef.current;
+    const item: ShapeItem = {
       id,
-      x: Math.min(95, src.x + 3),
-      y: Math.min(95, src.y + 3),
+      ...base,
+      fill: kind === 'line' || kind === 'arrow' ? null : last.fill,
+      stroke: last.stroke,
+      strokeWidth: last.strokeWidth,
+      radius: kind === 'rect' ? last.radius : base.radius,
     };
-    setTexts((ts) => [...ts, copy]);
-    setSelectedTextId(id);
+    setShapes((ss) => [...ss, item]);
+    setSelectedShapeId(id);
     setSelected(null);
-    // bump offset so consecutive pastes cascade
-    textClipboardRef.current = copy;
+    setSelectedTextId(null);
+  };
+
+  const updateShape = (id: string, patch: Partial<ShapeItem>) => {
+    setShapes((ss) => ss.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    if (patch.fill !== undefined) lastShapeStyleRef.current.fill = patch.fill;
+    if (patch.stroke !== undefined) lastShapeStyleRef.current.stroke = patch.stroke;
+    if (patch.strokeWidth !== undefined)
+      lastShapeStyleRef.current.strokeWidth = patch.strokeWidth;
+    if (patch.radius !== undefined) lastShapeStyleRef.current.radius = patch.radius;
+  };
+
+  const removeShape = (id: string) => {
+    setShapes((ss) => ss.filter((s) => s.id !== id));
+    if (selectedShapeId === id) setSelectedShapeId(null);
+  };
+
+  const bringShapeToFront = (id: string) => {
+    setShapes((ss) => {
+      const idx = ss.findIndex((s) => s.id === id);
+      if (idx < 0) return ss;
+      const next = ss.slice();
+      const [item] = next.splice(idx, 1);
+      next.push(item);
+      return next;
+    });
+  };
+
+  const sendShapeToBack = (id: string) => {
+    setShapes((ss) => {
+      const idx = ss.findIndex((s) => s.id === id);
+      if (idx < 0) return ss;
+      const next = ss.slice();
+      const [item] = next.splice(idx, 1);
+      next.unshift(item);
+      return next;
+    });
   };
 
   const bringTextToFront = (id: string) => {
@@ -506,20 +614,21 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (
-        (e.key === 'Delete' || e.key === 'Backspace') &&
-        selectedTextId &&
-        document.activeElement?.tagName !== 'INPUT' &&
-        document.activeElement?.tagName !== 'TEXTAREA'
-      ) {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (selectedTextId) {
         e.preventDefault();
         removeText(selectedTextId);
+      } else if (selectedShapeId) {
+        e.preventDefault();
+        removeShape(selectedShapeId);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTextId]);
+  }, [selectedTextId, selectedShapeId]);
 
   const exportPng = async () => {
     if (!stageRef.current) return;
@@ -528,6 +637,7 @@ export default function App() {
       const dataUrl = await exportStageToPngDataUrl(
         stageRef.current,
         texts,
+        shapes,
         config.width,
         config.height
       );
@@ -582,7 +692,10 @@ export default function App() {
         <button
           className="btn btn-primary"
           onClick={exportPng}
-          disabled={exporting || (!cellStates.some((c) => c.photoId) && texts.length === 0)}
+          disabled={
+            exporting ||
+            (!cellStates.some((c) => c.photoId) && texts.length === 0 && shapes.length === 0)
+          }
         >
           {exporting ? '匯出中…' : '⤓ 匯出 PNG'}
         </button>
@@ -691,11 +804,32 @@ export default function App() {
               onSelect={(id) => {
                 setSelectedTextId(id);
                 setSelected(null);
+                setSelectedShapeId(null);
               }}
               onChange={updateText}
               onRemove={removeText}
               onBringToFront={bringTextToFront}
               onSendToBack={sendTextToBack}
+            />
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <h3>圖形</h3>
+            </div>
+            <ShapePanel
+              items={shapes}
+              selectedId={selectedShapeId}
+              onAdd={addShape}
+              onSelect={(id) => {
+                setSelectedShapeId(id);
+                setSelected(null);
+                setSelectedTextId(null);
+              }}
+              onChange={updateShape}
+              onRemove={removeShape}
+              onBringToFront={bringShapeToFront}
+              onSendToBack={sendShapeToBack}
             />
           </section>
 
@@ -823,10 +957,11 @@ export default function App() {
             if (e.target === e.currentTarget) {
               setSelected(null);
               setSelectedTextId(null);
+              setSelectedShapeId(null);
             }
           }}
         >
-          {photos.length === 0 && texts.length === 0 ? (
+          {photos.length === 0 && texts.length === 0 && shapes.length === 0 ? (
             <Dropzone onFiles={addPhotosAndFill} />
           ) : (
             <div
@@ -859,6 +994,7 @@ export default function App() {
                       onSelect={() => {
                         setSelected(i);
                         setSelectedTextId(null);
+                        setSelectedShapeId(null);
                       }}
                       onChange={(patch) => updateCell(i, patch)}
                       onClear={() => clearCell(i)}
@@ -869,6 +1005,20 @@ export default function App() {
                     />
                   );
                 })}
+                {shapes.map((s) => (
+                  <ShapeLayer
+                    key={s.id}
+                    item={s}
+                    selected={selectedShapeId === s.id}
+                    stageRef={stageRef}
+                    onSelect={() => {
+                      setSelectedShapeId(s.id);
+                      setSelected(null);
+                      setSelectedTextId(null);
+                    }}
+                    onChange={(patch) => updateShape(s.id, patch)}
+                  />
+                ))}
                 {texts.map((t) => (
                   <TextLayer
                     key={t.id}
@@ -879,6 +1029,7 @@ export default function App() {
                     onSelect={() => {
                       setSelectedTextId(t.id);
                       setSelected(null);
+                      setSelectedShapeId(null);
                     }}
                     onChange={(patch) => updateText(t.id, patch)}
                     onSnapChange={setSnapGuides}

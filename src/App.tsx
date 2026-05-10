@@ -105,20 +105,43 @@ const newId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
+const THUMB_MAX = 800;
+
 async function loadPhoto(file: File): Promise<Photo> {
-  const src = URL.createObjectURL(file);
+  const fullSrc = URL.createObjectURL(file);
   const img = new Image();
-  img.src = src;
+  img.src = fullSrc;
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error(`Failed to load ${file.name}`));
   });
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  let src = fullSrc;
+  const longest = Math.max(nw, nh);
+  if (longest > THUMB_MAX) {
+    const scale = THUMB_MAX / longest;
+    const tw = Math.max(1, Math.round(nw * scale));
+    const th = Math.max(1, Math.round(nh * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = tw;
+    canvas.height = th;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, tw, th);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85)
+      );
+      if (blob) src = URL.createObjectURL(blob);
+    }
+  }
   return {
     id: newId(),
     src,
+    fullSrc,
     name: file.name,
-    naturalWidth: img.naturalWidth,
-    naturalHeight: img.naturalHeight,
+    naturalWidth: nw,
+    naturalHeight: nh,
   };
 }
 
@@ -128,7 +151,8 @@ export default function App() {
   const [cellStates, setCellStates] = useState<CellState[]>(() =>
     LAYOUTS[5].cells.map(() => ({ ...DEFAULT_CELL }))
   );
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const primary: number | null = selected.length === 1 ? selected[0] : null;
   const [config, setConfig] = useState<CanvasConfig>({
     width: 1080,
     height: 1080,
@@ -137,6 +161,11 @@ export default function App() {
     bg: '#ffffff',
   });
   const [exporting, setExporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(
+    null
+  );
+  const [useOriginalAlways, setUseOriginalAlways] = useState(false);
+  const [stageZoom, setStageZoom] = useState(1);
   const [texts, setTexts] = useState<TextItem[]>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [shapes, setShapes] = useState<ShapeItem[]>([]);
@@ -146,6 +175,126 @@ export default function App() {
     y: null,
   });
   const stageRef = useRef<HTMLDivElement>(null);
+  const stageAreaRef = useRef<HTMLDivElement>(null);
+  const MIN_ZOOM = 0.25;
+  const MAX_ZOOM = 8;
+
+  const zoomBy = useCallback((factor: number, anchorClientX?: number, anchorClientY?: number) => {
+    const el = stageAreaRef.current;
+    if (!el) {
+      setStageZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * factor)));
+      return;
+    }
+    const wrapBefore = el.querySelector('.stage-wrap')?.getBoundingClientRect();
+    const areaRect = el.getBoundingClientRect();
+    const cx = anchorClientX ?? areaRect.left + areaRect.width / 2;
+    const cy = anchorClientY ?? areaRect.top + areaRect.height / 2;
+    const fx = wrapBefore ? (cx - wrapBefore.left) / wrapBefore.width : 0.5;
+    const fy = wrapBefore ? (cy - wrapBefore.top) / wrapBefore.height : 0.5;
+    setStageZoom((z) => {
+      const newZ = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * factor));
+      if (newZ === z) return z;
+      requestAnimationFrame(() => {
+        const node = stageAreaRef.current;
+        if (!node) return;
+        const wrapAfter = node.querySelector('.stage-wrap')?.getBoundingClientRect();
+        if (!wrapAfter) return;
+        const desiredLeft = cx - fx * wrapAfter.width;
+        const desiredTop = cy - fy * wrapAfter.height;
+        node.scrollLeft += wrapAfter.left - desiredLeft;
+        node.scrollTop += wrapAfter.top - desiredTop;
+      });
+      return newZ;
+    });
+  }, []);
+
+  const setZoom = useCallback((next: number) => {
+    setStageZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next)));
+  }, []);
+
+  useEffect(() => {
+    const el = stageAreaRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      const onPhotoCell =
+        !!target?.closest && !!target.closest('.cell.has-photo') && !e.ctrlKey && !e.metaKey;
+      if (onPhotoCell) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      zoomBy(factor, e.clientX, e.clientY);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false, capture: true });
+    return () => el.removeEventListener('wheel', onWheel, { capture: true } as EventListenerOptions);
+  }, [zoomBy]);
+
+  useEffect(() => {
+    const el = stageAreaRef.current;
+    if (!el) return;
+    let spaceDown = false;
+    let pan: { startX: number; startY: number; sl: number; st: number; pointerId: number } | null = null;
+
+    const isFormFocused = () => {
+      const tag = document.activeElement?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA';
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !spaceDown && !isFormFocused()) {
+        spaceDown = true;
+        el.classList.add('is-panning');
+        e.preventDefault();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceDown = false;
+        el.classList.remove('is-panning', 'is-panning-active');
+      }
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const isMiddle = e.button === 1;
+      if (!(spaceDown || isMiddle)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pan = {
+        startX: e.clientX,
+        startY: e.clientY,
+        sl: el.scrollLeft,
+        st: el.scrollTop,
+        pointerId: e.pointerId,
+      };
+      el.setPointerCapture?.(e.pointerId);
+      el.classList.add('is-panning-active');
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!pan || pan.pointerId !== e.pointerId) return;
+      el.scrollLeft = pan.sl - (e.clientX - pan.startX);
+      el.scrollTop = pan.st - (e.clientY - pan.startY);
+    };
+    const endPan = (e: PointerEvent) => {
+      if (pan?.pointerId === e.pointerId) {
+        el.releasePointerCapture?.(e.pointerId);
+        pan = null;
+        el.classList.remove('is-panning-active');
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    el.addEventListener('pointerdown', onPointerDown, { capture: true });
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', endPan);
+    el.addEventListener('pointercancel', endPan);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      el.removeEventListener('pointerdown', onPointerDown, { capture: true } as EventListenerOptions);
+      el.removeEventListener('pointermove', onPointerMove);
+      el.removeEventListener('pointerup', endPan);
+      el.removeEventListener('pointercancel', endPan);
+    };
+  }, []);
   const clipboardRef = useRef<
     | { kind: 'text'; item: TextItem }
     | { kind: 'shape'; item: ShapeItem }
@@ -198,7 +347,7 @@ export default function App() {
     setTexts(s.texts);
     setShapes(s.shapes);
     setConfig(s.config);
-    setSelected(null);
+    setSelected([]);
     setSelectedTextId(null);
     setSelectedShapeId(null);
   };
@@ -283,25 +432,44 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [undo, redo, selectedTextId, texts, selectedShapeId, shapes]);
 
-  const addPhotosAndFill = useCallback(async (files: File[]) => {
-    const imgs = files.filter((f) => f.type.startsWith('image/'));
-    if (!imgs.length) return;
-    const loaded = await Promise.all(imgs.map(loadPhoto));
-    setPhotos((prev) => [...prev, ...loaded]);
-    setCellStates((cs) => {
-      const queue = [...loaded];
-      return cs.map((c) => {
-        if (c.photoId) return c;
-        const p = queue.shift();
-        return p ? { ...DEFAULT_CELL, photoId: p.id } : c;
-      });
-    });
+  const loadPhotosSequential = useCallback(async (files: File[]): Promise<Photo[]> => {
+    setImportProgress({ done: 0, total: files.length });
+    const loaded: Photo[] = [];
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const photo = await loadPhoto(files[i]);
+        loaded.push(photo);
+      } catch (err) {
+        console.error('loadPhoto failed', err);
+      }
+      setImportProgress({ done: i + 1, total: files.length });
+    }
+    setImportProgress(null);
+    return loaded;
   }, []);
+
+  const addPhotosAndFill = useCallback(
+    async (files: File[]) => {
+      const imgs = files.filter((f) => f.type.startsWith('image/'));
+      if (!imgs.length) return;
+      const loaded = await loadPhotosSequential(imgs);
+      setPhotos((prev) => [...prev, ...loaded]);
+      setCellStates((cs) => {
+        const queue = [...loaded];
+        return cs.map((c) => {
+          if (c.photoId) return c;
+          const p = queue.shift();
+          return p ? { ...DEFAULT_CELL, photoId: p.id } : c;
+        });
+      });
+    },
+    [loadPhotosSequential]
+  );
 
   const selectLayout = (l: Layout) => {
     const cloned = cloneLayout(l);
     setLayout(cloned);
-    setSelected(null);
+    setSelected([]);
     setCellStates(() => {
       const queue = [...photos];
       return cloned.cells.map(() => {
@@ -383,7 +551,7 @@ export default function App() {
     const cells = grid(cols, rows);
     const cloned: Layout = { id: `grid-${cols}x${rows}`, name: `${cols} × ${rows} 格`, cells };
     setLayout(cloned);
-    setSelected(null);
+    setSelected([]);
     setCellStates(() => {
       const queue = [...photos];
       return cloned.cells.map(() => {
@@ -399,13 +567,13 @@ export default function App() {
       cells: [...l.cells, { x: 35, y: 35, w: 30, h: 30 }],
     }));
     setCellStates((cs) => [...cs, { ...DEFAULT_CELL }]);
-    setSelected(layout.cells.length);
+    setSelected([layout.cells.length]);
   };
 
   const removeCell = (idx: number) => {
     setLayout((l) => ({ ...l, cells: l.cells.filter((_, i) => i !== idx) }));
     setCellStates((cs) => cs.filter((_, i) => i !== idx));
-    setSelected(null);
+    setSelected([]);
   };
 
   const distributeRow = (idx: number) => {
@@ -475,7 +643,8 @@ export default function App() {
   const dropFilesIntoCell = async (idx: number, files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith('image/'));
     if (!imgs.length) return;
-    const loaded = await Promise.all(imgs.map(loadPhoto));
+    const loaded = await loadPhotosSequential(imgs);
+    if (!loaded.length) return;
     setPhotos((prev) => [...prev, ...loaded]);
     setCellStates((cs) => {
       const next = cs.slice();
@@ -490,7 +659,7 @@ export default function App() {
       }
       return next;
     });
-    setSelected(idx);
+    setSelected([idx]);
   };
 
   const requestPhotoForCell = (idx: number) => {
@@ -544,7 +713,7 @@ export default function App() {
     };
     setTexts((ts) => [...ts, item]);
     setSelectedTextId(id);
-    setSelected(null);
+    setSelected([]);
   };
 
   const updateText = (id: string, patch: Partial<TextItem>) => {
@@ -569,7 +738,7 @@ export default function App() {
       };
       setTexts((ts) => [...ts, copy]);
       setSelectedTextId(id);
-      setSelected(null);
+      setSelected([]);
       setSelectedShapeId(null);
       clipboardRef.current = { kind: 'text', item: copy };
     } else {
@@ -581,7 +750,7 @@ export default function App() {
       };
       setShapes((ss) => [...ss, copy]);
       setSelectedShapeId(id);
-      setSelected(null);
+      setSelected([]);
       setSelectedTextId(null);
       clipboardRef.current = { kind: 'shape', item: copy };
     }
@@ -601,7 +770,7 @@ export default function App() {
     };
     setShapes((ss) => [...ss, item]);
     setSelectedShapeId(id);
-    setSelected(null);
+    setSelected([]);
     setSelectedTextId(null);
   };
 
@@ -674,23 +843,45 @@ export default function App() {
       } else if (selectedShapeId) {
         e.preventDefault();
         removeShape(selectedShapeId);
+      } else if (selected.length > 0) {
+        e.preventDefault();
+        const targets = new Set(selected);
+        setCellStates((cs) =>
+          cs.map((c, i) => (targets.has(i) ? { ...DEFAULT_CELL } : c))
+        );
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTextId, selectedShapeId]);
+  }, [selectedTextId, selectedShapeId, selected]);
 
   const exportPng = async () => {
     if (!stageRef.current) return;
     setExporting(true);
     try {
+      const loadCellFullImage = async (idx: number): Promise<HTMLImageElement | null> => {
+        const cs = cellStates[idx];
+        if (!cs?.photoId) return null;
+        const photo = photoMap.get(cs.photoId);
+        if (!photo) return null;
+        const fullSrc = photo.fullSrc ?? photo.src;
+        if (fullSrc === photo.src) return null;
+        const fullImg = new Image();
+        fullImg.src = fullSrc;
+        await new Promise<void>((resolve, reject) => {
+          fullImg.onload = () => resolve();
+          fullImg.onerror = () => reject(new Error('failed to load full image'));
+        });
+        return fullImg;
+      };
       const dataUrl = await exportStageToPngDataUrl(
         stageRef.current,
         texts,
         shapes,
         config.width,
-        config.height
+        config.height,
+        loadCellFullImage
       );
       const filename = `collage-${Date.now()}.png`;
       const isTauri = '__TAURI_INTERNALS__' in window;
@@ -726,6 +917,12 @@ export default function App() {
           拼貼相片
           <span className="brand-version">v{__APP_VERSION__}</span>
         </div>
+        {importProgress && (
+          <div className="import-progress">
+            <span className="import-spinner" />
+            處理照片 {importProgress.done} / {importProgress.total}
+          </div>
+        )}
         <div className="topbar-spacer" />
         <button
           className="btn btn-icon"
@@ -743,6 +940,13 @@ export default function App() {
         >
           ↷
         </button>
+        <div className="zoom-controls">
+          <button className="btn btn-icon" onClick={() => zoomBy(1 / 1.2)} title="縮小 (滾輪)">−</button>
+          <button className="btn btn-zoom" onClick={() => setZoom(1)} title="重設縮放">
+            {Math.round(stageZoom * 100)}%
+          </button>
+          <button className="btn btn-icon" onClick={() => zoomBy(1.2)} title="放大 (滾輪)">+</button>
+        </div>
         <button
           className="btn btn-primary"
           onClick={exportPng}
@@ -767,8 +971,8 @@ export default function App() {
               <button className="btn" onClick={addCell}>＋ 加格子</button>
               <button
                 className="btn btn-danger"
-                onClick={() => selected != null && removeCell(selected)}
-                disabled={selected == null}
+                onClick={() => primary != null && removeCell(primary)}
+                disabled={primary == null}
               >
                 － 刪選中
               </button>
@@ -776,16 +980,16 @@ export default function App() {
             <div className="text-actions">
               <button
                 className="btn"
-                onClick={() => selected != null && splitCell(selected, 'h')}
-                disabled={selected == null}
+                onClick={() => primary != null && splitCell(primary, 'h')}
+                disabled={primary == null}
                 title="把選中格子切左右兩半"
               >
                 ↔ 左右切
               </button>
               <button
                 className="btn"
-                onClick={() => selected != null && splitCell(selected, 'v')}
-                disabled={selected == null}
+                onClick={() => primary != null && splitCell(primary, 'v')}
+                disabled={primary == null}
                 title="把選中格子切上下兩半"
               >
                 ↕ 上下切
@@ -794,16 +998,16 @@ export default function App() {
             <div className="text-actions">
               <button
                 className="btn"
-                onClick={() => selected != null && distributeRow(selected)}
-                disabled={selected == null}
+                onClick={() => primary != null && distributeRow(primary)}
+                disabled={primary == null}
                 title="把同一橫排的格子設成等寬"
               >
                 ⇿ 平均橫排
               </button>
               <button
                 className="btn"
-                onClick={() => selected != null && distributeCol(selected)}
-                disabled={selected == null}
+                onClick={() => primary != null && distributeCol(primary)}
+                disabled={primary == null}
                 title="把同一直列的格子設成等高"
               >
                 ⇕ 平均直列
@@ -814,37 +1018,37 @@ export default function App() {
           <section className="panel">
             <div className="panel-head">
               <h3>效果</h3>
-              {selected != null && cellStates[selected]?.photoId && (
-                <span className="panel-tag">第 {selected + 1} 格</span>
+              {primary != null && cellStates[primary]?.photoId && (
+                <span className="panel-tag">第 {primary + 1} 格</span>
               )}
             </div>
             <FilterPanel
               filter={
-                selected != null && cellStates[selected]?.photoId
-                  ? cellStates[selected].filter
+                primary != null && cellStates[primary]?.photoId
+                  ? cellStates[primary].filter
                   : null
               }
               photo={
-                selected != null && cellStates[selected]?.photoId
-                  ? photoMap.get(cellStates[selected].photoId!) ?? null
+                primary != null && cellStates[primary]?.photoId
+                  ? photoMap.get(cellStates[primary].photoId!) ?? null
                   : null
               }
-              onChange={(patch) => selected != null && updateCellFilter(selected, patch)}
+              onChange={(patch) => primary != null && updateCellFilter(primary, patch)}
               onReset={() =>
-                selected != null && setCellFilter(selected, { ...DEFAULT_FILTER })
+                primary != null && setCellFilter(primary, { ...DEFAULT_FILTER })
               }
-              onApplyPreset={(f) => selected != null && setCellFilter(selected, f)}
+              onApplyPreset={(f) => primary != null && setCellFilter(primary, f)}
             />
           </section>
 
           <section className="panel">
             <div className="panel-head">
               <h3>邊框 / 陰影</h3>
-              {selected != null && <span className="panel-tag">第 {selected + 1} 格</span>}
+              {primary != null && <span className="panel-tag">第 {primary + 1} 格</span>}
             </div>
             <CellStylePanel
-              state={selected != null ? cellStates[selected] ?? null : null}
-              onChange={(patch) => selected != null && updateCell(selected, patch)}
+              state={primary != null ? cellStates[primary] ?? null : null}
+              onChange={(patch) => primary != null && updateCell(primary, patch)}
             />
           </section>
 
@@ -858,7 +1062,7 @@ export default function App() {
               onAdd={addText}
               onSelect={(id) => {
                 setSelectedTextId(id);
-                setSelected(null);
+                setSelected([]);
                 setSelectedShapeId(null);
               }}
               onChange={updateText}
@@ -878,7 +1082,7 @@ export default function App() {
               onAdd={addShape}
               onSelect={(id) => {
                 setSelectedShapeId(id);
-                setSelected(null);
+                setSelected([]);
                 setSelectedTextId(null);
               }}
               onChange={updateShape}
@@ -953,6 +1157,17 @@ export default function App() {
               </button>
             </div>
             <div className="form-row">
+              <label>顯示</label>
+              <label className="checkbox-row" style={{ gridColumn: '2 / -1' }}>
+                <input
+                  type="checkbox"
+                  checked={useOriginalAlways}
+                  onChange={(e) => setUseOriginalAlways(e.target.checked)}
+                />
+                <span>全部顯示原圖(吃 RAM)</span>
+              </label>
+            </div>
+            <div className="form-row">
               <label>間距</label>
               <input
                 type="range"
@@ -1000,17 +1215,19 @@ export default function App() {
 
           <p className="hint">
             提示 · 點選格子,拖曳平移、滾輪縮放。空格按 + 加入照片。
-            拖曳格子邊緣可調整版面比例。
+            拖曳格子邊緣可調整版面比例。Ctrl+點選可多選格子,Delete 一次清空照片。
+            滾輪縮放整個 stage;Space+拖曳或中鍵拖曳平移。
           </p>
         </aside>
 
         <main
+          ref={stageAreaRef}
           className="stage-area"
           onDragOver={(e) => e.preventDefault()}
           onDrop={onStageDrop}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setSelected(null);
+              setSelected([]);
               setSelectedTextId(null);
               setSelectedShapeId(null);
             }
@@ -1026,6 +1243,7 @@ export default function App() {
                   aspectRatio: `${config.width} / ${config.height}`,
                   '--aspect-w': config.width,
                   '--aspect-h': config.height,
+                  '--zoom': stageZoom,
                 } as React.CSSProperties
               }
             >
@@ -1043,11 +1261,17 @@ export default function App() {
                       cell={cell}
                       state={cs}
                       photo={photo}
-                      selected={selected === i}
+                      selected={selected.includes(i)}
                       radius={config.radius}
                       gap={config.gap}
-                      onSelect={() => {
-                        setSelected(i);
+                      onSelect={(additive) => {
+                        setSelected((prev) =>
+                          additive
+                            ? prev.includes(i)
+                              ? prev.filter((j) => j !== i)
+                              : [...prev, i]
+                            : [i]
+                        );
                         setSelectedTextId(null);
                         setSelectedShapeId(null);
                       }}
@@ -1057,6 +1281,7 @@ export default function App() {
                       onResizeStart={(dir, e) => startResize(i, dir, e)}
                       onMoveStart={(e) => startCellMove(i, e)}
                       onDropFiles={(files) => dropFilesIntoCell(i, files)}
+                      useFullSrc={useOriginalAlways || primary === i}
                     />
                   );
                 })}
@@ -1068,7 +1293,7 @@ export default function App() {
                     stageRef={stageRef}
                     onSelect={() => {
                       setSelectedShapeId(s.id);
-                      setSelected(null);
+                      setSelected([]);
                       setSelectedTextId(null);
                     }}
                     onChange={(patch) => updateShape(s.id, patch)}
@@ -1083,7 +1308,7 @@ export default function App() {
                     snapTargets={snapTargets}
                     onSelect={() => {
                       setSelectedTextId(t.id);
-                      setSelected(null);
+                      setSelected([]);
                       setSelectedShapeId(null);
                     }}
                     onChange={(patch) => updateText(t.id, patch)}

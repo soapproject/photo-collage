@@ -1,6 +1,7 @@
 export type Photo = {
   id: string;
-  src: string;
+  src: string;       // thumbnail blob URL (used for display)
+  fullSrc: string;   // full-resolution blob URL (used for export and selected cells)
   name: string;
   naturalWidth: number;
   naturalHeight: number;

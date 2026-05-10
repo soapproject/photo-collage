@@ -10,13 +10,14 @@ type Props = {
   selected: boolean;
   radius: number;
   gap: number;
-  onSelect: () => void;
+  onSelect: (additive: boolean) => void;
   onChange: (next: Partial<CellState>) => void;
   onClear: () => void;
   onAddPhoto: () => void;
   onResizeStart: (dir: ResizeDir, e: React.PointerEvent) => void;
   onMoveStart: (e: React.PointerEvent) => void;
   onDropFiles: (files: File[]) => void;
+  useFullSrc?: boolean;
 };
 
 const MIN_SCALE = 1;
@@ -43,6 +44,7 @@ export function PhotoCell({
   onResizeStart,
   onMoveStart,
   onDropFiles,
+  useFullSrc,
 }: Props) {
   const hasRightLine = cell.x + cell.w < 99.9;
   const hasBottomLine = cell.y + cell.h < 99.9;
@@ -64,6 +66,7 @@ export function PhotoCell({
     const el = elRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
       if (!photo) return;
       e.preventDefault();
       const direction = e.deltaY > 0 ? -1 : 1;
@@ -76,8 +79,9 @@ export function PhotoCell({
   }, [photo, state.scale, state.offsetX, state.offsetY, onChange]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    onSelect();
-    if (!photo) return;
+    const additive = e.ctrlKey || e.shiftKey || e.metaKey;
+    onSelect(additive);
+    if (!photo || additive) return;
     const el = elRef.current;
     if (!el) return;
     el.setPointerCapture(e.pointerId);
@@ -159,7 +163,7 @@ export function PhotoCell({
     >
       {photo ? (
         <img
-          src={photo.src}
+          src={useFullSrc ? photo.fullSrc ?? photo.src : photo.src}
           alt=""
           draggable={false}
           className="cell-img"

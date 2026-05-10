@@ -33,7 +33,8 @@ export async function exportStageToPngDataUrl(
   texts: TextItem[],
   shapes: ShapeItem[],
   outputWidth: number,
-  outputHeight: number
+  outputHeight: number,
+  loadCellFullImage?: (cellIdx: number) => Promise<HTMLImageElement | null>
 ): Promise<string> {
   const stageRect = stage.getBoundingClientRect();
   const canvas = document.createElement('canvas');
@@ -51,7 +52,8 @@ export async function exportStageToPngDataUrl(
   }
 
   const cells = Array.from(stage.querySelectorAll<HTMLElement>('.cell'));
-  for (const cell of cells) {
+  for (let cellIdx = 0; cellIdx < cells.length; cellIdx++) {
+    const cell = cells[cellIdx];
     const r = cell.getBoundingClientRect();
     const x = r.left - stageRect.left;
     const y = r.top - stageRect.top;
@@ -96,13 +98,15 @@ export async function exportStageToPngDataUrl(
 
     const img = cell.querySelector<HTMLImageElement>('img.cell-img');
     if (img && img.complete && img.naturalWidth > 0) {
+      const fullImg = loadCellFullImage ? await loadCellFullImage(cellIdx) : null;
+      const drawSource: HTMLImageElement = fullImg ?? img;
       const ir = img.getBoundingClientRect();
       const dx = ir.left - stageRect.left;
       const dy = ir.top - stageRect.top;
       const dw = ir.width;
       const dh = ir.height;
-      const nw = img.naturalWidth;
-      const nh = img.naturalHeight;
+      const nw = drawSource.naturalWidth;
+      const nh = drawSource.naturalHeight;
       const naturalRatio = nw / nh;
       const boxRatio = dw / dh;
 
@@ -134,7 +138,7 @@ export async function exportStageToPngDataUrl(
       if (imgFilter && imgFilter !== 'none') {
         ctx.filter = imgFilter;
       }
-      ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+      ctx.drawImage(drawSource, sx, sy, sw, sh, dx, dy, dw, dh);
       ctx.restore();
     }
 

@@ -42,6 +42,31 @@
   flex: 1;
 }
 
+.import-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+  padding: 4px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.import-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: import-spin 0.8s linear infinite;
+}
+@keyframes import-spin {
+  to { transform: rotate(360deg); }
+}
+
 .btn {
   padding: 8px 14px;
   border-radius: 6px;
@@ -76,6 +101,27 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+.btn-zoom {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+}
+.btn-zoom:hover {
+  background: var(--border);
 }
 
 .main {
@@ -162,6 +208,18 @@
   padding: 4px 8px;
   font: inherit;
   font-variant-numeric: tabular-nums;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.checkbox-row input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 .custom-grid-row {
@@ -323,15 +381,23 @@
     radial-gradient(circle at 80% 100%, rgba(155, 107, 253, 0.05), transparent 40%),
     var(--bg);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   padding: 32px;
   overflow: auto;
   container-type: size;
 }
+.stage-area.is-panning {
+  cursor: grab;
+}
+.stage-area.is-panning-active,
+.stage-area.is-panning-active * {
+  cursor: grabbing !important;
+}
 
 .stage-wrap {
-  width: min(100cqw, calc(100cqh * var(--aspect-w) / var(--aspect-h)), 1200px);
+  width: calc(min(100cqw, calc(100cqh * var(--aspect-w) / var(--aspect-h)), 1200px) * var(--zoom, 1));
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;

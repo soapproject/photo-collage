@@ -5,9 +5,10 @@ type Props = {
   min: number;
   max: number;
   onCommit: (v: number) => void;
+  className?: string;
 };
 
-export function SizeInput({ value, min, max, onCommit }: Props) {
+export function SizeInput({ value, min, max, onCommit, className }: Props) {
   const [draft, setDraft] = useState(String(value));
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export function SizeInput({ value, min, max, onCommit }: Props) {
   return (
     <input
       type="number"
-      className="num-input"
+      className={`num-input ${className ?? ''}`}
       min={min}
       max={max}
       value={draft}

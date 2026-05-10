@@ -1,5 +1,6 @@
 import { FONT_FAMILIES, FONT_WEIGHTS } from '../types';
 import type { TextAlign, TextItem } from '../types';
+import { SizeInput } from './SizeInput';
 
 type Props = {
   items: TextItem[];
@@ -101,12 +102,18 @@ function TextEditor({ item, onChange, onRemove, onBringToFront, onSendToBack }: 
         <label>字級</label>
         <input
           type="range"
-          min={12}
-          max={240}
+          min={8}
+          max={400}
           value={item.fontSize}
           onChange={(e) => onChange({ fontSize: parseInt(e.target.value) })}
         />
-        <span className="form-val">{item.fontSize}px</span>
+        <SizeInput
+          value={item.fontSize}
+          min={1}
+          max={2000}
+          onCommit={(v) => onChange({ fontSize: v })}
+          className="num-input-tiny"
+        />
       </div>
 
       <div className="form-row">
@@ -251,6 +258,15 @@ function TextEditor({ item, onChange, onRemove, onBringToFront, onSendToBack }: 
         />
         {item.shadow && (
           <div className="shadow-grid">
+            <label>顏色</label>
+            <input
+              type="color"
+              value={item.shadow.color.startsWith('#') ? item.shadow.color : '#000000'}
+              onChange={(e) =>
+                onChange({ shadow: { ...item.shadow!, color: e.target.value } })
+              }
+              style={{ width: '100%' }}
+            />
             <label>X</label>
             <input
               type="range"

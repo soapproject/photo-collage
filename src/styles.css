@@ -164,6 +164,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+.custom-grid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.custom-grid-row .num-input-tiny {
+  width: 48px;
+  padding: 4px 6px;
+  text-align: center;
+}
+.custom-grid-row .custom-grid-x {
+  color: var(--text-faint);
+}
+.custom-grid-row .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  margin-left: auto;
+}
+
 .aspect-row {
   grid-column: 2 / -1;
   display: flex;

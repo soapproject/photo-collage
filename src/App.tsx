@@ -10,7 +10,7 @@ import { CellStylePanel } from './components/CellStylePanel';
 import { SizeInput } from './components/SizeInput';
 import { ShapeLayer } from './components/ShapeLayer';
 import { ShapePanel } from './components/ShapePanel';
-import { LAYOUTS } from './layouts';
+import { LAYOUTS, grid } from './layouts';
 import { ASPECT_RATIOS, DEFAULT_FILTER, FONT_FAMILIES, defaultShapeFor } from './types';
 import { applyResize, type ResizeDir } from './resize';
 import type {
@@ -29,6 +29,43 @@ const cloneLayout = (l: Layout): Layout => ({
   ...l,
   cells: l.cells.map((c) => ({ ...c })),
 });
+
+function CustomGridRow({ onApply }: { onApply: (cols: number, rows: number) => void }) {
+  const [cols, setCols] = useState('3');
+  const [rows, setRows] = useState('3');
+  const apply = () => {
+    const c = Math.max(1, Math.min(12, parseInt(cols, 10) || 1));
+    const r = Math.max(1, Math.min(12, parseInt(rows, 10) || 1));
+    onApply(c, r);
+  };
+  return (
+    <div className="custom-grid-row">
+      <span>自訂</span>
+      <input
+        type="number"
+        className="num-input num-input-tiny"
+        min={1}
+        max={12}
+        value={cols}
+        onChange={(e) => setCols(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && apply()}
+        title="欄"
+      />
+      <span className="custom-grid-x">×</span>
+      <input
+        type="number"
+        className="num-input num-input-tiny"
+        min={1}
+        max={12}
+        value={rows}
+        onChange={(e) => setRows(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && apply()}
+        title="列"
+      />
+      <button className="btn" onClick={apply}>套用</button>
+    </div>
+  );
+}
 
 const DEFAULT_CELL: CellState = {
   photoId: null,
@@ -340,6 +377,20 @@ export default function App() {
 
   const setCellFilter = (idx: number, filter: CellFilter) => {
     setCellStates((cs) => cs.map((c, i) => (i === idx ? { ...c, filter } : c)));
+  };
+
+  const applyCustomGrid = (cols: number, rows: number) => {
+    const cells = grid(cols, rows);
+    const cloned: Layout = { id: `grid-${cols}x${rows}`, name: `${cols} × ${rows} 格`, cells };
+    setLayout(cloned);
+    setSelected(null);
+    setCellStates(() => {
+      const queue = [...photos];
+      return cloned.cells.map(() => {
+        const p = queue.shift();
+        return p ? { ...DEFAULT_CELL, photoId: p.id } : { ...DEFAULT_CELL };
+      });
+    });
   };
 
   const addCell = () => {
@@ -662,6 +713,9 @@ export default function App() {
 
   const onStageDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if ((e.target as HTMLElement | null)?.closest('.cell')) return;
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+    if (files.length) addPhotosAndFill(files);
   };
 
   return (
@@ -708,6 +762,7 @@ export default function App() {
               <h3>版型</h3>
             </div>
             <LayoutPicker selectedId={layout.id} onSelect={selectLayout} />
+            <CustomGridRow onApply={applyCustomGrid} />
             <div className="text-actions">
               <button className="btn" onClick={addCell}>＋ 加格子</button>
               <button

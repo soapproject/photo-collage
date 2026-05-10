@@ -1,6 +1,6 @@
 import type { Layout } from './types';
 
-const grid = (cols: number, rows: number): Layout['cells'] => {
+export const grid = (cols: number, rows: number): Layout['cells'] => {
   const cells: Layout['cells'] = [];
   const w = 100 / cols;
   const h = 100 / rows;
@@ -26,6 +26,8 @@ export const LAYOUTS: Layout[] = [
   { id: 'grid-2x3', name: '2 × 3 格', cells: grid(2, 3) },
   { id: 'grid-3x3', name: '3 × 3 格', cells: grid(3, 3) },
   { id: 'grid-4x4', name: '4 × 4 格', cells: grid(4, 4) },
+  { id: 'grid-5x4', name: '5 × 4 格', cells: grid(5, 4) },
+  { id: 'grid-4x5', name: '4 × 5 格', cells: grid(4, 5) },
 
   {
     id: 'big-left-2',

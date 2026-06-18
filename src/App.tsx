@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportStageToPngDataUrl } from './exportCanvas';
 import { Dropzone } from './components/Dropzone';
 import { LayoutPicker } from './components/LayoutPicker';
@@ -321,7 +321,13 @@ export default function App() {
     future: [],
     current: { photos: [], layout, cellStates, texts: [], shapes: [], config },
   });
-  const [, bumpHistory] = useReducer((x: number) => x + 1, 0);
+  const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
+  const bumpHistory = useCallback(() => {
+    setHistoryFlags({
+      canUndo: historyRef.current.past.length > 0,
+      canRedo: historyRef.current.future.length > 0,
+    });
+  }, []);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -337,7 +343,7 @@ export default function App() {
         bumpHistory();
       }
     }, HISTORY_DEBOUNCE_MS);
-  }, [photos, layout, cellStates, texts, shapes, config]);
+  }, [photos, layout, cellStates, texts, shapes, config, bumpHistory]);
 
   const applyState = (s: EditableState) => {
     historyRef.current.current = s;
@@ -387,11 +393,40 @@ export default function App() {
     historyRef.current.past.push(historyRef.current.current);
     applyState(next);
     bumpHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [bumpHistory]);
 
-  const canUndo = historyRef.current.past.length > 0;
-  const canRedo = historyRef.current.future.length > 0;
+  const { canUndo, canRedo } = historyFlags;
+
+  const pasteFromClipboard = useCallback(() => {
+    const src = clipboardRef.current;
+    if (!src) return;
+    const id = newId();
+    if (src.kind === 'text') {
+      const copy: TextItem = {
+        ...src.item,
+        id,
+        x: Math.min(95, src.item.x + 3),
+        y: Math.min(95, src.item.y + 3),
+      };
+      setTexts((ts) => [...ts, copy]);
+      setSelectedTextId(id);
+      setSelected([]);
+      setSelectedShapeId(null);
+      clipboardRef.current = { kind: 'text', item: copy };
+    } else {
+      const copy: ShapeItem = {
+        ...src.item,
+        id,
+        x: Math.min(100 - src.item.w, src.item.x + 3),
+        y: Math.min(100 - src.item.h, src.item.y + 3),
+      };
+      setShapes((ss) => [...ss, copy]);
+      setSelectedShapeId(id);
+      setSelected([]);
+      setSelectedTextId(null);
+      clipboardRef.current = { kind: 'shape', item: copy };
+    }
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -429,8 +464,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undo, redo, selectedTextId, texts, selectedShapeId, shapes]);
+  }, [undo, redo, selectedTextId, texts, selectedShapeId, shapes, pasteFromClipboard]);
 
   const loadPhotosSequential = useCallback(async (files: File[]): Promise<Photo[]> => {
     setImportProgress({ done: 0, total: files.length });
@@ -504,6 +538,7 @@ export default function App() {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    // eslint-disable-next-line react-hooks/immutability -- imperative drag-cursor feedback in a pointer handler
     document.body.style.cursor = 'grabbing';
   };
 
@@ -530,6 +565,7 @@ export default function App() {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    // eslint-disable-next-line react-hooks/immutability -- imperative resize-cursor feedback in a pointer handler
     document.body.style.cursor = isHorizontal ? 'ew-resize' : 'ns-resize';
   };
 
@@ -723,37 +759,6 @@ export default function App() {
   const removeText = (id: string) => {
     setTexts((ts) => ts.filter((t) => t.id !== id));
     if (selectedTextId === id) setSelectedTextId(null);
-  };
-
-  const pasteFromClipboard = () => {
-    const src = clipboardRef.current;
-    if (!src) return;
-    const id = newId();
-    if (src.kind === 'text') {
-      const copy: TextItem = {
-        ...src.item,
-        id,
-        x: Math.min(95, src.item.x + 3),
-        y: Math.min(95, src.item.y + 3),
-      };
-      setTexts((ts) => [...ts, copy]);
-      setSelectedTextId(id);
-      setSelected([]);
-      setSelectedShapeId(null);
-      clipboardRef.current = { kind: 'text', item: copy };
-    } else {
-      const copy: ShapeItem = {
-        ...src.item,
-        id,
-        x: Math.min(100 - src.item.w, src.item.x + 3),
-        y: Math.min(100 - src.item.h, src.item.y + 3),
-      };
-      setShapes((ss) => [...ss, copy]);
-      setSelectedShapeId(id);
-      setSelected([]);
-      setSelectedTextId(null);
-      clipboardRef.current = { kind: 'shape', item: copy };
-    }
   };
 
   const addShape = (kind: ShapeKind) => {
@@ -1281,6 +1286,8 @@ export default function App() {
                       onResizeStart={(dir, e) => startResize(i, dir, e)}
                       onMoveStart={(e) => startCellMove(i, e)}
                       onDropFiles={(files) => dropFilesIntoCell(i, files)}
+                      canvasW={config.width}
+                      canvasH={config.height}
                       useFullSrc={useOriginalAlways || primary === i}
                     />
                   );

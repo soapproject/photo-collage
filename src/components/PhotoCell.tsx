@@ -17,6 +17,8 @@ type Props = {
   onResizeStart: (dir: ResizeDir, e: React.PointerEvent) => void;
   onMoveStart: (e: React.PointerEvent) => void;
   onDropFiles: (files: File[]) => void;
+  canvasW: number;
+  canvasH: number;
   useFullSrc?: boolean;
 };
 
@@ -25,9 +27,27 @@ const MAX_SCALE = 5;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-const clampOffsets = (scale: number, x: number, y: number) => {
-  const limit = ((scale - 1) / 2) * 100;
-  return { x: clamp(x, -limit, limit), y: clamp(y, -limit, limit) };
+// Element size (% of cell) needed to cover-fill the cell at a given zoom.
+// The overflow axis expands per the image/cell aspect-ratio mismatch, so the
+// photo can be panned along that axis even at scale 1 (no zoom required).
+const coverPct = (scale: number, imgRatio: number, cellRatio: number) => {
+  if (imgRatio >= cellRatio) {
+    return { w: 100 * scale * (imgRatio / cellRatio), h: 100 * scale };
+  }
+  return { w: 100 * scale, h: 100 * scale * (cellRatio / imgRatio) };
+};
+
+const clampOffsets = (
+  scale: number,
+  x: number,
+  y: number,
+  imgRatio: number,
+  cellRatio: number
+) => {
+  const { w, h } = coverPct(scale, imgRatio, cellRatio);
+  const limitX = Math.max(0, (w - 100) / 2);
+  const limitY = Math.max(0, (h - 100) / 2);
+  return { x: clamp(x, -limitX, limitX), y: clamp(y, -limitY, limitY) };
 };
 
 export function PhotoCell({
@@ -44,6 +64,8 @@ export function PhotoCell({
   onResizeStart,
   onMoveStart,
   onDropFiles,
+  canvasW,
+  canvasH,
   useFullSrc,
 }: Props) {
   const hasRightLine = cell.x + cell.w < 99.9;
@@ -62,6 +84,11 @@ export function PhotoCell({
     height: number;
   } | null>(null);
 
+  const imgRatio =
+    photo && photo.naturalHeight > 0 ? photo.naturalWidth / photo.naturalHeight : 1;
+  const cellRatio = (cell.w / cell.h) * (canvasW / canvasH);
+  const { w: imgW, h: imgH } = coverPct(state.scale, imgRatio, cellRatio);
+
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
@@ -71,12 +98,12 @@ export function PhotoCell({
       e.preventDefault();
       const direction = e.deltaY > 0 ? -1 : 1;
       const next = clamp(state.scale + direction * 0.08, MIN_SCALE, MAX_SCALE);
-      const { x, y } = clampOffsets(next, state.offsetX, state.offsetY);
+      const { x, y } = clampOffsets(next, state.offsetX, state.offsetY, imgRatio, cellRatio);
       onChange({ scale: next, offsetX: x, offsetY: y });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [photo, state.scale, state.offsetX, state.offsetY, onChange]);
+  }, [photo, state.scale, state.offsetX, state.offsetY, onChange, imgRatio, cellRatio]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const additive = e.ctrlKey || e.shiftKey || e.metaKey;
@@ -102,7 +129,13 @@ export function PhotoCell({
     if (!drag || drag.pointerId !== e.pointerId) return;
     const dx = ((e.clientX - drag.startX) / drag.width) * 100;
     const dy = ((e.clientY - drag.startY) / drag.height) * 100;
-    const { x, y } = clampOffsets(state.scale, drag.baseOffsetX + dx, drag.baseOffsetY + dy);
+    const { x, y } = clampOffsets(
+      state.scale,
+      drag.baseOffsetX + dx,
+      drag.baseOffsetY + dy,
+      imgRatio,
+      cellRatio
+    );
     onChange({ offsetX: x, offsetY: y });
   };
 
@@ -168,8 +201,8 @@ export function PhotoCell({
           draggable={false}
           className="cell-img"
           style={{
-            width: `${100 * state.scale}%`,
-            height: `${100 * state.scale}%`,
+            width: `${imgW}%`,
+            height: `${imgH}%`,
             left: `calc(50% + ${state.offsetX}%)`,
             top: `calc(50% + ${state.offsetY}%)`,
             transform: `translate(-50%, -50%) rotate(${state.rotate}deg) scaleX(${
@@ -198,7 +231,7 @@ export function PhotoCell({
             className="cell-btn"
             onClick={() => {
               const next = clamp(state.scale - 0.2, MIN_SCALE, MAX_SCALE);
-              const { x, y } = clampOffsets(next, state.offsetX, state.offsetY);
+              const { x, y } = clampOffsets(next, state.offsetX, state.offsetY, imgRatio, cellRatio);
               onChange({ scale: next, offsetX: x, offsetY: y });
             }}
             title="縮小"
@@ -213,7 +246,7 @@ export function PhotoCell({
             value={state.scale}
             onChange={(e) => {
               const next = parseFloat(e.target.value);
-              const { x, y } = clampOffsets(next, state.offsetX, state.offsetY);
+              const { x, y } = clampOffsets(next, state.offsetX, state.offsetY, imgRatio, cellRatio);
               onChange({ scale: next, offsetX: x, offsetY: y });
             }}
           />
@@ -221,7 +254,7 @@ export function PhotoCell({
             className="cell-btn"
             onClick={() => {
               const next = clamp(state.scale + 0.2, MIN_SCALE, MAX_SCALE);
-              const { x, y } = clampOffsets(next, state.offsetX, state.offsetY);
+              const { x, y } = clampOffsets(next, state.offsetX, state.offsetY, imgRatio, cellRatio);
               onChange({ scale: next, offsetX: x, offsetY: y });
             }}
             title="放大"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 type Props = {
   value: number;
@@ -10,10 +10,13 @@ type Props = {
 
 export function SizeInput({ value, min, max, onCommit, className }: Props) {
   const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => {
+  // Re-sync the draft when the external value changes, adjusting state during
+  // render (React's recommended pattern) instead of in an effect.
+  const [lastValue, setLastValue] = useState(value);
+  if (value !== lastValue) {
+    setLastValue(value);
     setDraft(String(value));
-  }, [value]);
+  }
 
   const commit = () => {
     const n = parseInt(draft, 10);
